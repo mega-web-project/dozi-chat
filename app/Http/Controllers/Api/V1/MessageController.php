@@ -104,21 +104,66 @@ class MessageController extends Controller
     /**
      * List messages in a conversation
      */
+    // public function index(Request $request, Conversation $conversation)
+    // {
+    //     $user = Auth::user();
+
+    //     if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+    //         throw ValidationException::withMessages([
+    //             'conversation' => ['You are not a participant in this conversation'],
+    //         ]);
+    //     }
+
+    //     $messages = $conversation->messages()
+    //                              ->with(['sender', 'media', 'reads'])
+    //                              ->latest()
+    //                              ->paginate(50);
+
+    //     return response()->json($messages);
+    // }
+
     public function index(Request $request, Conversation $conversation)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
-            throw ValidationException::withMessages([
-                'conversation' => ['You are not a participant in this conversation'],
-            ]);
-        }
-
-        $messages = $conversation->messages()
-                                 ->with(['sender', 'media', 'reads'])
-                                 ->latest()
-                                 ->paginate(50);
-
-        return response()->json($messages);
+    if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+        throw ValidationException::withMessages([
+            'conversation' => ['You are not a participant in this conversation'],
+        ]);
     }
+
+    $isGroup = $conversation->participants()->count() > 2;
+
+    $messages = $conversation->messages()
+        ->with(['sender', 'media', 'reads'])
+        ->latest()
+        ->paginate(50);
+
+    $messages->getCollection()->transform(function ($message) use ($user, $isGroup) {
+        $isMe = $message->sender_id === $user->id;
+
+        return [
+            'id'         => $message->id,
+            'body'       => $message->body,
+            'created_at' => $message->created_at,
+            'media'      => $message->media,
+            'reads'      => $message->reads,
+
+            // identity
+            'identity'   => $isMe ? 'sender' : 'receiver',
+            'is_me'      => $isMe,
+            'is_group'   => $isGroup,
+
+            // sender info (critical for group chat)
+            'sender' => [
+                'id'     => $message->sender->id,
+                'name'   => $message->sender->name,
+                'avatar' => $message->sender->avatar ?? null,
+            ],
+        ];
+    });
+
+    return response()->json($messages);
+}
+
 }
