@@ -17,6 +17,38 @@ class ConversationController extends Controller
 {
     // get all contacts 
 
+// get all users in the system
+public function AllUsers() {
+    $authUser = auth()->user();
+
+    // 1️⃣ Get IDs of users who already have a conversation with the auth user
+    $conversationUserIds = Conversation::where('type', 'private')
+        ->whereHas('participants', fn($q) => $q->where('user_id', $authUser->id))
+        ->with('participants')
+        ->get()
+        ->flatMap(fn($conversation) => $conversation->participants->pluck('id'))
+        ->unique()
+        ->filter(fn($id) => $id != $authUser->id); // exclude self
+
+    // 2️⃣ Get all users except self and except those in a conversation
+    $users = User::where('id', '!=', $authUser->id)
+        ->whereNotIn('id', $conversationUserIds)
+        ->get();
+
+    return response()->json([
+       
+        'users' => $users->map(function ($user) {
+        return [
+            'id' => $user->id,
+            'name' => $user->name,
+            'avatar'=>$user->avatar,
+            'email'=>$user->email
+        ];
+    }),
+    ]);
+}
+
+
 public function contacts()
 {
     $user = auth()->user();
@@ -38,17 +70,14 @@ public function contacts()
             }
         ])
         ->get()
-        ->keyBy(function ($conversation) use ($user) {
-            // Identify the OTHER user in the conversation
-            $other = $conversation->participants->first(fn($p) => $p->id !== $user->id);
-            return $other?->id;
-        });
+        ->keyBy(fn ($conversation) => 
+            $conversation->participants->first(fn($p) => $p->id !== $user->id)?->id
+        );
 
     // 2️⃣ Fetch all users except self
     $contacts = User::where('id', '!=', $user->id)
         ->get()
         ->map(function ($contact) use ($conversations) {
-
             $conversation = $conversations->get($contact->id);
 
             return [
@@ -70,12 +99,15 @@ public function contacts()
                     'created_at' => $conversation->messages->first()->created_at,
                 ] : null,
             ];
-        });
+        })
+        ->filter(fn($contact) => $contact['has_conversation']) // Only keep users with a conversation
+        ->values(); // Reindex the collection
 
     return response()->json([
         'contacts' => $contacts,
     ]);
 }
+
 
 
 

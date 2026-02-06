@@ -40,9 +40,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::post('/user/avatar', [UserController::class, 'uploadAvatar']);
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
+   
     // --------------------------
     // Conversations
     // --------------------------
+     Route::get("/users",  [ConversationController::class, 'AllUsers']);
     Route::get('/contacts', [ConversationController::class, 'contacts']); // Get contacts
     Route::get('/conversations', [ConversationController::class, 'index']); // List user conversations
     Route::post('/conversations', [ConversationController::class, 'store']); // Create new conversation

@@ -28,7 +28,7 @@ class UserController extends Controller
 
         $user->update(['avatar' => $path]);
 
-        return response()->json([x
+        return response()->json([
             'message' => 'Profile image uploaded successfully',
             'avatar_url' => asset('storage/' . $path),
         ]);
