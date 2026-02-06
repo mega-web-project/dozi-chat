@@ -42,7 +42,10 @@ public function AllUsers() {
             'id' => $user->id,
             'name' => $user->name,
             'avatar'=>$user->avatar,
-            'email'=>$user->email
+            'email'=>$user->email,
+            'last_seen_at' => $user->last_seen_at,
+            'availability' => $user->availability,
+            'do_not_disturb' => $user->do_not_disturb,
         ];
     }),
     ]);
