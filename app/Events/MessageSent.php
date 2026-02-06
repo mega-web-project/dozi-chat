@@ -4,6 +4,7 @@ namespace App\Events;
 
 use App\Models\Message;
 use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Queue\SerializesModels;
@@ -14,19 +15,26 @@ class MessageSent implements ShouldBroadcast
 
     public $message;
 
+    /**
+     * Create a new event instance.
+     */
     public function __construct(Message $message)
     {
-        $this->message = $message;
+        $this->message = $message->load('media', 'sender'); // preload relations
     }
 
+    /**
+     * Get the channels the event should broadcast on.
+     */
     public function broadcastOn()
     {
-        // Broadcast to all participants in the conversation
-        return $this->message->conversation->participants->map(function ($p) {
-            return new Channel('user.' . $p->user_id);
-        })->toArray();
+        // Broadcast to the conversation channel
+        return new PrivateChannel('conversation.' . $this->message->conversation_id);
     }
 
+    /**
+     * Data to broadcast with the event.
+     */
     public function broadcastWith()
     {
         return [
@@ -34,6 +42,9 @@ class MessageSent implements ShouldBroadcast
         ];
     }
 
+    /**
+     * Event name for the frontend.
+     */
     public function broadcastAs()
     {
         return 'message.sent';

@@ -91,7 +91,6 @@ public function contacts()
                 'last_seen_at' => $contact->last_seen_at,
                 'availability' => $contact->availability,
                 'do_not_disturb' => $contact->do_not_disturb,
-
                 // Chat data
                 'has_conversation' => (bool) $conversation,
                 'conversation_id' => $conversation?->id,

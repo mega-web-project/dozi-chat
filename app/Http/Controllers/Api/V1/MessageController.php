@@ -17,55 +17,113 @@ class MessageController extends Controller
     /**
      * Send a message in a conversation
      */
+    // public function send(Request $request, Conversation $conversation)
+    // {
+    //     $request->validate([
+    //         'type' => 'required|in:text,image,video,audio,file',
+    //         'body' => 'nullable|string',
+    //         'reply_to' => 'nullable|exists:messages,id',
+    //         'media.*' => 'file|max:10240', // max 10MB
+    //     ]);
+
+    //     $user = Auth::user();
+
+    //     // Only allow participants
+    //     if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+    //         throw ValidationException::withMessages([
+    //             'conversation' => ['You are not a participant in this conversation'],
+    //         ]);
+    //     }
+
+    //     // Create message
+    //     $message = Message::create([
+    //         'conversation_id' => $conversation->id,
+    //         'sender_id' => $user->id,
+    //         'type' => $request->type,
+    //         'body' => $request->body,
+    //         'reply_to' => $request->reply_to,
+    //     ]);
+
+    //     // Handle media files
+    //     if ($request->hasFile('media')) {
+    //         foreach ($request->file('media') as $file) {
+    //             $path = $file->store('messages', 'public');
+
+    //             MessageMedia::create([
+    //                 'message_id' => $message->id,
+    //                 'file_url' => Storage::url($path),
+    //                 'file_type' => $file->getClientMimeType(),
+    //                 'file_size' => $file->getSize(),
+    //             ]);
+    //         }
+    //     }
+
+    //     // Broadcast event
+    //     broadcast(new MessageSent($message->load('media', 'sender')))->toOthers();
+
+    //     return response()->json([
+    //         'message' => 'Message sent successfully',
+    //         'data' => $message->load('media', 'sender'),
+    //     ], 201);
+    // }
+
     public function send(Request $request, Conversation $conversation)
-    {
-        $request->validate([
-            'type' => 'required|in:text,image,video,audio,file',
-            'body' => 'nullable|string',
-            'reply_to' => 'nullable|exists:messages,id',
-            'media.*' => 'file|max:10240', // max 10MB
+{
+    $request->validate([
+        'type' => 'required|in:text,image,video,audio,file',
+        'body' => 'nullable|string',
+        'reply_to' => 'nullable|exists:messages,id',
+        'media.*' => 'file|max:10240', // max 10MB
+    ]);
+
+    $user = Auth::user();
+
+    // Only allow participants
+    if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+        throw ValidationException::withMessages([
+            'conversation' => ['You are not a participant in this conversation'],
         ]);
+    }
 
-        $user = Auth::user();
+    // Create message
+    $message = Message::create([
+        'conversation_id' => $conversation->id,
+        'sender_id' => $user->id,
+        'type' => $request->type,
+        'body' => $request->body,
+        'reply_to' => $request->reply_to,
+    ]);
 
-        // Only allow participants
-        if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
-            throw ValidationException::withMessages([
-                'conversation' => ['You are not a participant in this conversation'],
+    // Handle media files
+    if ($request->hasFile('media')) {
+        foreach ($request->file('media') as $file) {
+            $path = $file->store('messages', 'public');
+
+            MessageMedia::create([
+                'message_id' => $message->id,
+                'file_url' => Storage::url($path),
+                'file_type' => $file->getClientMimeType(),
+                'file_size' => $file->getSize(),
             ]);
         }
-
-        // Create message
-        $message = Message::create([
-            'conversation_id' => $conversation->id,
-            'sender_id' => $user->id,
-            'type' => $request->type,
-            'body' => $request->body,
-            'reply_to' => $request->reply_to,
-        ]);
-
-        // Handle media files
-        if ($request->hasFile('media')) {
-            foreach ($request->file('media') as $file) {
-                $path = $file->store('messages', 'public');
-
-                MessageMedia::create([
-                    'message_id' => $message->id,
-                    'file_url' => Storage::url($path),
-                    'file_type' => $file->getClientMimeType(),
-                    'file_size' => $file->getSize(),
-                ]);
-            }
-        }
-
-        // Broadcast event
-        broadcast(new MessageSent($message->load('media', 'sender')))->toOthers();
-
-        return response()->json([
-            'message' => 'Message sent successfully',
-            'data' => $message->load('media', 'sender'),
-        ], 201);
     }
+
+    // Broadcast event
+    broadcast(new MessageSent($message->load('media', 'sender')))->toOthers();
+
+    // Calculate unread count for the conversation for this user
+    // Unread = messages in this conversation not read by this user
+    $unread_count = $conversation->messages()
+        ->where('sender_id', '!=', $user->id)
+        ->whereDoesntHave('reads', fn($q) => $q->where('user_id', $user->id))
+        ->count();
+
+    return response()->json([
+        'message' => 'Message sent successfully',
+        'data' => $message->load('media', 'sender'),
+        'unread_count' => $unread_count,
+    ], 201);
+}
 
     /**
      * Mark message as read
