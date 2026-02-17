@@ -15,39 +15,26 @@ use App\Events\ParticipantRemoved;
 
 class ConversationController extends Controller
 {
-    // get all contacts 
 
-// get all users in the system
-public function AllUsers() {
+public function AllUsers()
+{
     $authUser = auth()->user();
 
-    // 1️⃣ Get IDs of users who already have a conversation with the auth user
     $conversationUserIds = Conversation::where('type', 'private')
-        ->whereHas('participants', fn($q) => $q->where('user_id', $authUser->id))
-        ->with('participants')
-        ->get()
-        ->flatMap(fn($conversation) => $conversation->participants->pluck('id'))
-        ->unique()
-        ->filter(fn($id) => $id != $authUser->id); // exclude self
+        ->whereHas('participants', function ($q) use ($authUser) {
+            $q->where('user_id', $authUser->id);
+        })
+        ->join('conversation_participants as cp', 'conversations.id', '=', 'cp.conversation_id')
+        ->where('cp.user_id', '!=', $authUser->id)
+        ->pluck('cp.user_id')
+        ->unique();
 
-    // 2️⃣ Get all users except self and except those in a conversation
     $users = User::where('id', '!=', $authUser->id)
         ->whereNotIn('id', $conversationUserIds)
         ->get();
 
     return response()->json([
-       
-        'users' => $users->map(function ($user) {
-        return [
-            'id' => $user->id,
-            'name' => $user->name,
-            'avatar'=>$user->avatar,
-            'email'=>$user->email,
-            'last_seen_at' => $user->last_seen_at,
-            'availability' => $user->availability,
-            'do_not_disturb' => $user->do_not_disturb,
-        ];
-    }),
+        'users' => $users
     ]);
 }
 

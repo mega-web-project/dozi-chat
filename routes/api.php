@@ -8,13 +8,29 @@ use App\Http\Controllers\Api\V1\ConversationController;
 use App\Http\Controllers\Api\V1\MessageController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\CallController;
+use App\Http\Controllers\Api\V1\NewsController;
 
 Route::prefix('v1')->group(function () {
 
+Route::post('/broadcasting/auth', function (Request $request) {
+    \Log::info('Broadcast auth hit', [
+        'user' => $request->user()?->id,
+        'socket_id' => $request->socket_id,
+        'channel_name' => $request->channel_name,
+        'headers' => $request->headers->all(),
+    ]);
+
+    return Broadcast::auth($request);
+})->middleware('auth:sanctum');
     // =============================
     // Public routes (no auth)
     // =============================
     // Route::post('/register', [AuthController::class, 'register']);
+
+   
+
+     Route::post('/gr/generate', [QrAuthController::class, 'generateQr']); // no auth
+     Route::post('/qr/verify', [QrAuthController::class, 'verifyOtp']); // web login
     Route::post('/request-activation', [AuthController::class, 'requestActivation']); // user requests OTP
     Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
     Route::post('/set-password', [AuthController::class, 'setPassword']);
@@ -25,6 +41,7 @@ Route::prefix('v1')->group(function () {
     // Protected routes (requires auth:sanctum)
     // =============================
     Route::middleware('auth:sanctum')->group(function () {
+         Route::post('/scan', [QrAuthController::class, 'scanQr']);
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
      
@@ -44,7 +61,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     // --------------------------
     // Conversations
     // --------------------------
-     Route::get("/users",  [ConversationController::class, 'AllUsers']);
+    Route::get("/users",  [ConversationController::class, 'AllUsers']);
     Route::get('/contacts', [ConversationController::class, 'contacts']); // Get contacts
     Route::get('/conversations', [ConversationController::class, 'index']); // List user conversations
     Route::post('/conversations', [ConversationController::class, 'store']); // Create new conversation
@@ -67,8 +84,22 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
 
     Route::prefix('call')->group(function () {
     Route::post('/start', [CallController::class, 'startCall']);
+      Route::post('/accept', [CallController::class, 'acceptCall']);
     Route::post('/end', [CallController::class, 'endCall']);
+
+    // routes/api.php (inside v1 group)
+    Route::post('/signal', [CallController::class, 'signal']);
+
     });
+
+
+    // News
+    Route::get('/news', [NewsController::class, 'index']);
+    Route::post('/news', [NewsController::class, 'store']);
+    Route::delete('/news/{id}', [NewsController::class, 'destroy']);
+
+    Route::post('/news/{id}/comments', [NewsController::class, 'addComment']);
+    Route::post('/news/{id}/poll/vote', [NewsController::class, 'vote']);
 
 });
 
