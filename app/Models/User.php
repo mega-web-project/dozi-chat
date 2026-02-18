@@ -6,6 +6,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Laravel\Sanctum\HasApiTokens; // <-- for API tokens
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
@@ -37,6 +38,7 @@ class User extends Authenticatable
         'remember_token',
         'email_otp',          // hide OTP from API
         'email_otp_sent_at',
+        
     ];
 
     // Casts
@@ -45,6 +47,11 @@ class User extends Authenticatable
         'last_seen_at'      => 'datetime',
         'email_otp_sent_at' => 'datetime',
     ];
+
+        public function getAvatarAttribute($value)
+        {
+            return $value ? Storage::disk('s3')->url($value) : null;
+        }
 
     // Conversations the user participates in
     public function conversations()

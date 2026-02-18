@@ -13,26 +13,32 @@ class UserController extends Controller
 {
     // Upload avatar (you already have this)
     public function uploadAvatar(Request $request)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        $request->validate([
-            'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048', // max 2MB
-        ]);
+    $request->validate([
+        'avatar' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+    ]);
 
-        if ($user->avatar) {
-            Storage::disk('public')->delete($user->avatar);
-        }
-
-        $path = $request->file('avatar')->store('avatars', 'public');
-
-        $user->update(['avatar' => $path]);
-
-        return response()->json([
-            'message' => 'Profile image uploaded successfully',
-            'avatar_url' => asset('storage/' . $path),
-        ]);
+    // Delete old avatar from S3
+    if ($user->avatar) {
+        Storage::disk('s3')->delete($user->avatar);
     }
+
+    // Store new avatar in S3
+    $path = $request->file('avatar')->store('avatars', 's3');
+
+    // Save only path in database
+    $user->update([
+        'avatar' => $path
+    ]);
+
+    return response()->json([
+        'message' => 'Profile image uploaded successfully',
+        'avatar_url' => Storage::disk('s3')->url($path),
+    ]);
+}
+
 
     // Update user profile
     public function updateProfile(Request $request)

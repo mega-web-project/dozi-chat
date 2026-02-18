@@ -69,12 +69,16 @@ public function contacts()
         ->get()
         ->map(function ($contact) use ($conversations) {
             $conversation = $conversations->get($contact->id);
+            
 
             return [
                 'id' => $contact->id,
                 'name' => $contact->name,
                 'email' => $contact->email,
-                'avatar' => $contact->avatar,
+                'avatar' => $contact->avatar
+                    ? Storage::disk('s3')->url($contact->avatar)
+                    : null,
+
                 'last_seen_at' => $contact->last_seen_at,
                 'availability' => $contact->availability,
                 'do_not_disturb' => $contact->do_not_disturb,
