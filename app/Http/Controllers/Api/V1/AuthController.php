@@ -93,6 +93,7 @@ public function requestActivation(Request $request)
     $request->validate([
         'email' => 'required|email|exists:users,email',
         'otp'   => 'required|digits:6',
+        'fcm_token' => 'required|string',
     ]);
 
     $otp = str_pad($request->otp, 6, '0', STR_PAD_LEFT);
@@ -118,6 +119,7 @@ public function requestActivation(Request $request)
         'email_verified_at' => now(),
         'email_otp' => null,
         'email_otp_sent_at' => null,
+        'fcm_token' => $validated['fcm_token'],
         'status' => 'active', // activate account
     ]);
 

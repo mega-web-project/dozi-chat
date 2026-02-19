@@ -29,7 +29,8 @@ class User extends Authenticatable
         'availability',
         'do_not_disturb',
         'role',      // new
-       'status',    // new
+        'status',    // new
+        'fcm_token',
     ];
 
     // Hidden fields

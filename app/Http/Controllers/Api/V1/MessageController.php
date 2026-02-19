@@ -8,6 +8,9 @@ use App\Models\MessageMedia;
 use App\Models\Conversation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use App\Events\MessageSent;
@@ -110,6 +113,7 @@ class MessageController extends Controller
 
     // Broadcast event
     broadcast(new MessageSent($message->load('media', 'sender')))->toOthers();
+    $this->sendPushNotifications($conversation, $message, $user);
 
     // Calculate unread count for the conversation for this user
     // Unread = messages in this conversation not read by this user
@@ -125,10 +129,70 @@ class MessageController extends Controller
     ], 201);
 }
 
+protected function sendPushNotifications(Conversation $conversation, Message $message, $sender): void
+{
+    // Keep API send flow resilient when push is not configured yet.
+    if (!Schema::hasColumn('users', 'fcm_token')) {
+        return;
+    }
+
+    $serverKey = env('FCM_SERVER_KEY');
+
+    if (empty($serverKey)) {
+        return;
+    }
+
+    $tokens = $conversation->participants()
+        ->where('users.id', '!=', $sender->id)
+        ->wherePivotNull('left_at')
+        ->whereNotNull('users.fcm_token')
+        ->pluck('users.fcm_token')
+        ->filter()
+        ->unique()
+        ->values();
+
+    if ($tokens->isEmpty()) {
+        return;
+    }
+
+    $body = $message->type === 'text'
+        ? (string) ($message->body ?? 'New message')
+        : 'Sent an attachment';
+
+    foreach ($tokens as $token) {
+        try {
+            Http::withHeaders([
+                'Authorization' => 'key=' . $serverKey,
+                'Content-Type' => 'application/json',
+            ])->post('https://fcm.googleapis.com/fcm/send', [
+                'to' => $token,
+                'notification' => [
+                    'title' => $sender->name,
+                    'body' => $body,
+                    'sound' => 'default',
+                ],
+                'data' => [
+                    'conversation_id' => $conversation->id,
+                    'message_id' => $message->id,
+                    'sender_id' => $sender->id,
+                    'type' => $message->type,
+                ],
+            ])->throw();
+        } catch (\Throwable $e) {
+            Log::warning('Push notification send failed', [
+                'conversation_id' => $conversation->id,
+                'message_id' => $message->id,
+                'token' => $token,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+}
+
     /**
      * Mark message as read
      */
-   public function markRead(Request $request, Message $message)
+public function markRead(Request $request, Message $message)
 {
     $user = Auth::user();
 
@@ -157,7 +221,7 @@ class MessageController extends Controller
     return response()->json([
         'message' => 'Message marked as read',
     ]);
-    }
+}
 
     /**
      * List messages in a conversation

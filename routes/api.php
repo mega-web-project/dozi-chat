@@ -9,19 +9,15 @@ use App\Http\Controllers\Api\V1\MessageController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\CallController;
 use App\Http\Controllers\Api\V1\NewsController;
+use App\Http\Controllers\Api\V1\QrAuthController;
 
 Route::prefix('v1')->group(function () {
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
-Route::post('/broadcasting/auth', function (Request $request) {
-    \Log::info('Broadcast auth hit', [
-        'user' => $request->user()?->id,
-        'socket_id' => $request->socket_id,
-        'channel_name' => $request->channel_name,
-        'headers' => $request->headers->all(),
+  Broadcast::routes([
+        'middleware' => ['auth:sanctum'],
+        'prefix' => 'broadcasting', 
     ]);
-
-    return Broadcast::auth($request);
-})->middleware('auth:sanctum');
     // =============================
     // Public routes (no auth)
     // =============================
