@@ -246,7 +246,9 @@ public function login(Request $request)
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'avatar' => $user->avatar,
+            'avatar' =>  $user->avatar 
+            ? Storage::disk('s3')->url($user->avatar) 
+            : null,
             'last_seen_at' => $user->last_seen_at,
             'role' => $user->role,
             'status' => $user->status,
