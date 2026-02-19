@@ -2,7 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-
+use Illuminate\Support\Facades\Broadcast;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\ConversationController;
 use App\Http\Controllers\Api\V1\MessageController;
@@ -14,10 +14,10 @@ use App\Http\Controllers\Api\V1\QrAuthController;
 Route::prefix('v1')->group(function () {
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
-  Broadcast::routes([
-        'middleware' => ['auth:sanctum'],
-        'prefix' => 'broadcasting', 
-    ]);
+//   Broadcast::routes([
+//         'middleware' => ['auth:sanctum'],
+//         'prefix' => 'broadcasting', 
+//     ]);
     // =============================
     // Public routes (no auth)
     // =============================

@@ -48,3 +48,7 @@ Broadcast::channel('call.{conversationId}', function ($user, $conversationId) {
         // 'avatar' => $user->profile_photo_url, // optional
     ];
 });
+
+Broadcast::channel('user.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});

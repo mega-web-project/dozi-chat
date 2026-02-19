@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Hash;
 use App\Mail\OTPMail;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller

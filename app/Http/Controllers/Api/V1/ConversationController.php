@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use App\Events\NewConversation;
 use App\Events\ParticipantAdded;
+use App\Events\TypingIndicator;
 use App\Events\ParticipantRemoved;
 
 class ConversationController extends Controller
@@ -262,29 +263,59 @@ public function contacts()
         ]);
     }
 
-    public function typing(Request $request, Conversation $conversation)
+//     public function typing(Request $request, Conversation $conversation)
+// {
+//     $request->validate([
+//         'is_typing' => 'required|boolean',
+//     ]);
+
+//     $user = auth()->user();
+
+//     if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+//         return response()->json([
+//             'message' => 'You are not a participant in this conversation'
+//         ], 403);
+//     }
+
+//     broadcast(new \App\Events\TypingIndicator(
+//         $conversation->id,
+//         $user->id,
+//         $user->name,
+//         $request->is_typing
+//     ))->toOthers();
+
+//     return response()->json([
+//         'message' => 'Typing event sent'
+//     ]);
+// }
+
+
+public function typing(Request $request, Conversation $conversation)
 {
     $request->validate([
-        'is_typing' => 'required|boolean',
+        'is_typing' => 'nullable|boolean',
     ]);
 
-    $user = auth()->user();
+    $user = Auth::user();
 
+    // Ensure sender belongs to conversation
     if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
-        return response()->json([
-            'message' => 'You are not a participant in this conversation'
-        ], 403);
+        throw ValidationException::withMessages([
+            'conversation' => ['You are not a participant in this conversation'],
+        ]);
     }
 
-    broadcast(new \App\Events\TypingIndicator(
+    $isTyping = $request->boolean('is_typing', true);
+
+    broadcast(new TypingIndicator(
         $conversation->id,
         $user->id,
         $user->name,
-        $request->is_typing
+        $isTyping
     ))->toOthers();
 
     return response()->json([
-        'message' => 'Typing event sent'
+        'message' => 'Typing event sent',
     ]);
 }
 
