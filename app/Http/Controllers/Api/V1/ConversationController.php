@@ -87,6 +87,7 @@ public function contacts()
                 'has_conversation' => (bool) $conversation,
                 'conversation_id' => $conversation?->id,
                 'unread_count' => $conversation?->unread_count ?? 0,
+                'role'=>$contact->role,
 
                 'last_message' => $conversation?->messages->first() ? [
                     'body' => $conversation->messages->first()->body,

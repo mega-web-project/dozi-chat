@@ -5,9 +5,9 @@ namespace App\Events;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 
-class TypingIndicator implements ShouldBroadcast
+class TypingIndicator implements ShouldBroadcastNow
 {
     use InteractsWithSockets;
 
