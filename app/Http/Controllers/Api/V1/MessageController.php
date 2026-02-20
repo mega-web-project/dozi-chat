@@ -100,11 +100,15 @@ class MessageController extends Controller
     // Handle media files
     if ($request->hasFile('media')) {
         foreach ($request->file('media') as $file) {
-            $path = $file->store('messages', 'public');
+            $path = $file->store('messages', 's3');
+
+            if (!$path) {
+                continue;
+            }
 
             MessageMedia::create([
                 'message_id' => $message->id,
-                'file_url' => Storage::url($path),
+                'file_url' => Storage::disk('s3')->url($path),
                 'file_type' => $file->getClientMimeType(),
                 'file_size' => $file->getSize(),
             ]);
