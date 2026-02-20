@@ -120,7 +120,7 @@ public function requestActivation(Request $request)
         'email_verified_at' => now(),
         'email_otp' => null,
         'email_otp_sent_at' => null,
-        'fcm_token' => $validated['fcm_token'],
+        'fcm_token' => $request->fcm_token,
         'status' => 'active', // activate account
     ]);
 
