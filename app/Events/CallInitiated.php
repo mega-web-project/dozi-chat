@@ -15,14 +15,16 @@ class CallInitiated implements ShouldBroadcast
     public $participant_id;
     public $type;
     public $conversation_id;
+    public $call_id;
 
-    public function __construct($caller_id, $caller_name, $participant_id, $type, $conversation_id)
+    public function __construct($caller_id, $caller_name, $participant_id, $type, $conversation_id, $call_id)
     {
         $this->caller_id = $caller_id;
         $this->caller_name = $caller_name;
         $this->participant_id = $participant_id;
         $this->type = $type;
         $this->conversation_id = $conversation_id;
+        $this->call_id = $call_id;
     }
 
     public function broadcastOn()
@@ -42,6 +44,7 @@ class CallInitiated implements ShouldBroadcast
             'caller_name' => $this->caller_name,
             'type' => $this->type,
             'conversation_id' => $this->conversation_id,
+            'call_id' => $this->call_id,
         ];
     }
 }

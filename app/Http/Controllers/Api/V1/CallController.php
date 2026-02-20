@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
@@ -43,7 +44,8 @@ class CallController extends Controller
         }
 
         $roomId = $this->create100msRoom((int) $request->conversation_id);
-        $callId = $roomId;
+        $callId = (string) Str::uuid();
+        Cache::put('call_room:' . $callId, $roomId, now()->addHours(2));
 
         foreach ($participants as $participant) {
             broadcast(new CallInitiated(
@@ -52,6 +54,7 @@ class CallController extends Controller
                 participant_id: $participant->id,
                 type: $request->type,
                 conversation_id: $request->conversation_id,
+                call_id: $callId,
             ))->toOthers();
         }
         $authToken = $this->generate100msToken($caller, $roomId);
@@ -162,8 +165,14 @@ return response()->json([
 
     $user = Auth::user();
 
+    $roomId = Cache::get('call_room:' . $request->call_id);
+
+    if (!$roomId) {
+        throw new \RuntimeException('Invalid or expired call_id');
+    }
+
     // Generate 100ms token for the accepter (callee)
-    $authToken = $this->generate100msToken($user, $request->call_id); // implement this
+    $authToken = $this->generate100msToken($user, $roomId);
 
     broadcast(new CallAccepted(
         call_id: $request->call_id,
