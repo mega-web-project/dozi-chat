@@ -12,6 +12,10 @@ class Conversation extends Model
     protected $fillable = [
         'type',
         'title',
+        'group_name',
+        'group_logo',
+        'group_banner',
+        'group_description',
         'created_by',
     ];
 
@@ -34,6 +38,11 @@ class Conversation extends Model
     public function messages()
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function groupSetting()
+    {
+        return $this->hasOne(ConversationGroupSetting::class);
     }
 
     public function lastMessage()

@@ -13,6 +13,7 @@ use App\Events\NewConversation;
 use App\Events\ParticipantAdded;
 use App\Events\TypingIndicator;
 use App\Events\ParticipantRemoved;
+use Illuminate\Support\Facades\Storage;
 
 class ConversationController extends Controller
 {
@@ -21,18 +22,7 @@ public function AllUsers()
 {
     $authUser = auth()->user();
 
-    $conversationUserIds = Conversation::where('type', 'private')
-        ->whereHas('participants', function ($q) use ($authUser) {
-            $q->where('user_id', $authUser->id);
-        })
-        ->join('conversation_participants as cp', 'conversations.id', '=', 'cp.conversation_id')
-        ->where('cp.user_id', '!=', $authUser->id)
-        ->pluck('cp.user_id')
-        ->unique();
-
-    $users = User::where('id', '!=', $authUser->id)
-        ->whereNotIn('id', $conversationUserIds)
-        ->get();
+    $users = User::where('id', '!=', $authUser->id)->get();
 
     return response()->json([
         'users' => $users
@@ -129,44 +119,147 @@ public function contacts()
     public function store(Request $request)
     {
         $request->validate([
-            'type' => 'required|in:private,group',
+            'conversation_id' => 'nullable|exists:conversations,id',
+            'type' => 'required_without:conversation_id|in:private,group',
             'title' => 'nullable|string|max:255',
-            'participant_ids' => 'required|array|min:1',
+            'group_name' => 'nullable|string|max:255',
+            'group_logo' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+            'group_banner' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:10240',
+            'group_description' => 'nullable|string',
+            'participant_ids' => 'required_without:conversation_id|array|min:1',
             'participant_ids.*' => 'exists:users,id',
+            'group_settings' => 'nullable|array',
+            'group_settings.who_can_send_messages' => 'sometimes|in:all,admins',
+            'group_settings.who_can_edit_info' => 'sometimes|in:all,admins',
+            'group_settings.allow_member_invite' => 'sometimes|boolean',
         ]);
 
         $user = Auth::user();
+        $isUpdate = $request->filled('conversation_id');
+        $groupLogoUrl = null;
+        $groupBannerUrl = null;
 
-        $conversation = Conversation::create([
-            'type' => $request->type,
-            'title' => $request->title,
-            'created_by' => $user->id,
-        ]);
+        if ($isUpdate) {
+            $conversation = Conversation::with('participants', 'groupSetting')->findOrFail($request->conversation_id);
 
-        // Add creator as admin
-        ConversationParticipant::create([
-            'conversation_id' => $conversation->id,
-            'user_id' => $user->id,
-            'role' => 'admin',
-            'joined_at' => now(),
-        ]);
+            $isAdmin = $conversation->participants()
+                ->where('user_id', $user->id)
+                ->wherePivot('role', 'admin')
+                ->exists();
 
-        // Add other participants
-        foreach ($request->participant_ids as $pid) {
+            if (!$isAdmin && $conversation->created_by !== $user->id) {
+                throw ValidationException::withMessages([
+                    'conversation' => ['You are not allowed to update this conversation'],
+                ]);
+            }
+        } else {
+            $conversation = null;
+        }
+
+        if ($request->hasFile('group_logo')) {
+            $logoPath = $request->file('group_logo')->store('groups/logos', 's3');
+            $groupLogoUrl = Storage::disk('s3')->url($logoPath);
+        }
+
+        if ($request->hasFile('group_banner')) {
+            $bannerPath = $request->file('group_banner')->store('groups/banners', 's3');
+            $groupBannerUrl = Storage::disk('s3')->url($bannerPath);
+        }
+
+        $conversationPayload = [
+            'title' => $request->title ?? $request->group_name,
+            'group_name' => $request->group_name,
+            'group_description' => $request->group_description,
+        ];
+
+        if ($request->filled('type')) {
+            $conversationPayload['type'] = $request->type;
+        }
+
+        if ($groupLogoUrl !== null) {
+            $conversationPayload['group_logo'] = $groupLogoUrl;
+        }
+
+        if ($groupBannerUrl !== null) {
+            $conversationPayload['group_banner'] = $groupBannerUrl;
+        }
+
+        if ($isUpdate) {
+            $conversation->update($conversationPayload);
+        } else {
+            $conversationPayload['created_by'] = $user->id;
+            $conversation = Conversation::create($conversationPayload);
+
+            // Add creator as admin
             ConversationParticipant::create([
                 'conversation_id' => $conversation->id,
-                'user_id' => $pid,
-                'role' => 'member',
+                'user_id' => $user->id,
+                'role' => 'admin',
                 'joined_at' => now(),
+            ]);
+
+            // Add other participants
+            foreach ($request->participant_ids as $pid) {
+                if ((int) $pid === (int) $user->id) {
+                    continue;
+                }
+
+                ConversationParticipant::firstOrCreate(
+                    [
+                        'conversation_id' => $conversation->id,
+                        'user_id' => $pid,
+                    ],
+                    [
+                        'role' => 'member',
+                        'joined_at' => now(),
+                    ]
+                );
+            }
+        }
+
+        if ($isUpdate && $request->filled('participant_ids')) {
+            foreach ($request->participant_ids as $pid) {
+                if ((int) $pid === (int) $user->id) {
+                    continue;
+                }
+
+                ConversationParticipant::firstOrCreate(
+                    [
+                        'conversation_id' => $conversation->id,
+                        'user_id' => $pid,
+                    ],
+                    [
+                        'role' => 'member',
+                        'joined_at' => now(),
+                    ]
+                );
+            }
+        }
+
+        $effectiveType = $conversation->type;
+
+        if ($effectiveType === 'group') {
+            $groupSettings = $request->input('group_settings', []);
+
+            $conversation->groupSetting()->updateOrCreate([
+                'conversation_id' => $conversation->id,
+            ], [
+                'who_can_send_messages' => $groupSettings['who_can_send_messages'] ?? 'all',
+                'who_can_edit_info' => $groupSettings['who_can_edit_info'] ?? 'admins',
+                'allow_member_invite' => $groupSettings['allow_member_invite'] ?? false,
             ]);
         }
 
-        broadcast(new NewConversation($conversation))->toOthers();
+        if (!$isUpdate) {
+            broadcast(new NewConversation($conversation))->toOthers();
+        }
 
         return response()->json([
-            'message' => 'Conversation created successfully',
-            'conversation' => $conversation->load('participants'),
-        ], 201);
+            'message' => $isUpdate
+                ? 'Conversation updated successfully'
+                : 'Conversation created successfully',
+            'conversation' => $conversation->load('participants', 'groupSetting'),
+        ], $isUpdate ? 200 : 201);
     }
 
     public function privateChat(Request $request)

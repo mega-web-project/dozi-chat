@@ -241,15 +241,14 @@ public function login(Request $request)
 
     $token = $user->createToken('dozi-chat')->plainTextToken;
 
+
     return response()->json([
         'message' => 'Login successful',
         'user' => [
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'avatar' =>  $user->avatar 
-            ? Storage::disk('s3')->url($user->avatar) 
-            : null,
+            'avatar' =>  $user->avatar,
             'last_seen_at' => $user->last_seen_at,
             'role' => $user->role,
             'status' => $user->status,

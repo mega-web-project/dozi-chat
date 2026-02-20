@@ -49,11 +49,19 @@ class User extends Authenticatable
         'email_otp_sent_at' => 'datetime',
     ];
 
-        public function getAvatarAttribute($value)
-        {
-            return $value ? Storage::disk('s3')->url($value) : null;
-        }
+      public function getAvatarAttribute($value)
+{
+    if (!$value) {
+        return null;
+    }
 
+    // If already a full URL, return as is
+    if (filter_var($value, FILTER_VALIDATE_URL)) {
+        return $value;
+    }
+
+    return Storage::disk('s3')->url($value);
+}
     // Conversations the user participates in
     public function conversations()
     {
