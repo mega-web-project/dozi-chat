@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -40,7 +42,8 @@ class CallController extends Controller
             ], 403);
         }
 
-        $callId = (string) Str::uuid();
+        $roomId = $this->create100msRoom((int) $request->conversation_id);
+        $callId = $roomId;
 
         foreach ($participants as $participant) {
             broadcast(new CallInitiated(
@@ -51,7 +54,7 @@ class CallController extends Controller
                 conversation_id: $request->conversation_id,
             ))->toOthers();
         }
-$authToken = $this->generate100msToken($caller, $callId);
+        $authToken = $this->generate100msToken($caller, $roomId);
 
 return response()->json([
     'message' => 'Call initiated',
@@ -65,34 +68,86 @@ return response()->json([
     }
 
 
+    private function create100msRoom(int $conversationId): string
+    {
+        $managementToken = env('HMS_MANAGEMENT_TOKEN');
+        $templateId = env('HMS_TEMPLATE_ID');
+
+        if (!$managementToken || !$templateId) {
+            throw new \RuntimeException('Missing HMS_MANAGEMENT_TOKEN or HMS_TEMPLATE_ID');
+        }
+
+        $response = Http::withToken($managementToken)
+            ->acceptJson()
+            ->post('https://api.100ms.live/v2/rooms', [
+                'name' => 'conversation-' . $conversationId . '-' . Str::lower(Str::random(8)),
+                'description' => 'Call room for conversation ' . $conversationId,
+                'template_id' => $templateId,
+            ]);
+
+        if (!$response->successful()) {
+            Log::error('100ms room creation failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+            throw new \RuntimeException('Failed to create 100ms room');
+        }
+
+        $roomId = data_get($response->json(), 'id');
+
+        if (!$roomId) {
+            throw new \RuntimeException('100ms room id missing in response');
+        }
+
+        return (string) $roomId;
+    }
+
     private function generate100msToken($user, string $roomId): string
-{
-    $managementToken = env('HMS_MANAGEMENT_TOKEN'); // from 100ms dashboard
-    $templateId = env('HMS_TEMPLATE_ID');           // room template id
+    {
+        $accessKey = env('HMS_ACCESS_KEY');
+        $secret = env('HMS_SECRET');
+        $role = env('HMS_ROLE', 'guest');
 
-    if (!$managementToken || !$templateId) {
-        throw new \RuntimeException('Missing HMS_MANAGEMENT_TOKEN or HMS_TEMPLATE_ID');
-    }
+        if (!$accessKey || !$secret) {
+            throw new \RuntimeException('Missing HMS_ACCESS_KEY or HMS_SECRET');
+        }
 
-    $response = Http::withToken($managementToken)
-        ->acceptJson()
-        ->post('https://api.100ms.live/v2/room-codes/room-code', [
-            'room_id' => $roomId, // or your actual 100ms room id mapping
-            'role' => 'guest',    // match role configured in your template
+        $now = time();
+        $payload = [
+            'access_key' => $accessKey,
+            'room_id' => $roomId,
             'user_id' => (string) $user->id,
-        ]);
+            'role' => $role,
+            'type' => 'app',
+            'version' => 2,
+            'iat' => $now,
+            'nbf' => $now,
+            'exp' => $now + 24 * 60 * 60,
+            'jti' => (string) Str::uuid(),
+        ];
 
-    if (!$response->successful()) {
-        Log::error('100ms token generation failed', ['status' => $response->status(), 'body' => $response->body()]);
-        throw new \RuntimeException('Failed to generate 100ms auth token');
+        return $this->encodeHs256Jwt($payload, $secret);
     }
 
-    $json = $response->json();
-    // adjust key if your endpoint returns a different structure
-    return data_get($json, 'token')
-        ?? data_get($json, 'room_code')
-        ?? throw new \RuntimeException('100ms token missing in response');
-}
+    private function encodeHs256Jwt(array $payload, string $secret): string
+    {
+        $header = [
+            'alg' => 'HS256',
+            'typ' => 'JWT',
+        ];
+
+        $headerEncoded = $this->base64UrlEncode(json_encode($header, JSON_UNESCAPED_SLASHES));
+        $payloadEncoded = $this->base64UrlEncode(json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $signature = hash_hmac('sha256', $headerEncoded . '.' . $payloadEncoded, $secret, true);
+        $signatureEncoded = $this->base64UrlEncode($signature);
+
+        return $headerEncoded . '.' . $payloadEncoded . '.' . $signatureEncoded;
+    }
+
+    private function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
 
 
     /**
