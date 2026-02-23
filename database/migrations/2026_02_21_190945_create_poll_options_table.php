@@ -11,12 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('poll_options', function (Blueprint $table) {
-            $table->id();
-        $table->foreignId('news_id')->constrained()->cascadeOnDelete();
-        $table->string('question');
-        $table->timestamps();
-        });
+      Schema::create('poll_options', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('poll_id')->constrained()->cascadeOnDelete();
+    $table->string('option_text');
+    $table->unsignedInteger('votes')->default(0);
+    $table->timestamps();
+});
     }
 
     /**

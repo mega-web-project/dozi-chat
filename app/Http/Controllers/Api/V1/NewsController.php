@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Models\News;
@@ -67,20 +68,22 @@ class NewsController extends Controller
             ]);
 
             // Create poll if provided
-            if ($request->poll_question && $request->poll_options) {
+            if ($request->has('poll.question') && $request->has('poll.options'))
+        {
+            $pollData = $request->input('poll');
 
-                $poll = Poll::create([
-                    'news_id' => $news->id,
-                    'question' => $request->poll_question,
+            $poll = Poll::create([
+                'news_id' => $news->id,
+                'question' => $pollData['question'],
+            ]);
+
+            foreach ($pollData['options'] as $option) {
+                PollOption::create([
+                    'poll_id' => $poll->id,
+                    'option_text' => $option,
                 ]);
-
-                foreach ($request->poll_options as $option) {
-                    PollOption::create([
-                        'poll_id' => $poll->id,
-                        'option_text' => $option,
-                    ]);
-                }
             }
+        }
 
             $news->load('user', 'poll.options');
 
@@ -106,6 +109,102 @@ class NewsController extends Controller
         }
     }
 
+//     public function store(Request $request)
+// {
+//     Log::info('Incoming news request', [
+//         'user_id' => Auth::id(),
+//         'payload' => $request->all()
+//     ]);
+
+//     $request->validate([
+//         'title' => 'required|string|max:255',
+//         'content' => 'required|string',
+
+//         // If you are NOT uploading files yet, keep this:
+//         'image' => 'nullable|string',
+
+//         // FIXED: match frontend nested structure
+//         'poll.question' => 'nullable|string',
+//         'poll.options' => 'nullable|array|min:2',
+//         'poll.options.*' => 'string'
+//     ]);
+
+//     DB::beginTransaction();
+
+//     try {
+
+//         Log::info('Creating news record...');
+
+//         $news = News::create([
+//             'user_id' => Auth::id(),
+//             'title' => $request->title,
+//             'content' => $request->content,
+//             'image' => $request->image,
+//         ]);
+
+//         Log::info('News created', ['news_id' => $news->id]);
+
+//         // Create poll if provided
+//         if ($request->has('poll.question') && $request->has('poll.options')) {
+
+//             Log::info('Creating poll...');
+
+//             $pollData = $request->input('poll');
+
+//             $poll = Poll::create([
+//                 'news_id' => $news->id,
+//                 'question' => $pollData['question'],
+//             ]);
+
+//             Log::info('Poll created', ['poll_id' => $poll->id]);
+
+//             foreach ($pollData['options'] as $option) {
+
+//                 Log::info('Creating poll option', ['option_text' => $option]);
+
+//                 PollOption::create([
+//                     'poll_id' => $poll->id,
+//                     'option_text' => $option,
+//                 ]);
+//             }
+//         }
+
+//         $news->load('user', 'poll.options');
+
+//         DB::commit();
+
+//         Log::info('News creation committed successfully', [
+//             'news_id' => $news->id
+//         ]);
+
+//         broadcast(new NewsCreated($news))->toOthers();
+
+//         return response()->json([
+//             'status' => true,
+//             'message' => 'News created successfully',
+//             'data' => $news
+//         ], 201);
+
+//     } catch (\Throwable $e) {
+
+//         DB::rollBack();
+
+//         Log::error('News creation failed', [
+//             'message' => $e->getMessage(),
+//             'file' => $e->getFile(),
+//             'line' => $e->getLine(),
+//             'trace' => $e->getTraceAsString(),
+//             'user_id' => Auth::id(),
+//             'request_payload' => $request->all(),
+//         ]);
+
+//         return response()->json([
+//             'status' => false,
+//             'message' => 'Failed to create news',
+//             'error' => $e->getMessage()
+//         ], 500);
+//     }
+// }
     /**
      * DELETE /api/v1/news/{id}
      */
