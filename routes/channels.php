@@ -3,12 +3,12 @@
 use Illuminate\Support\Facades\Broadcast;
 use App\Models\Conversation;
 
-Broadcast::channel('conversation.{conversationId}', function ($user, $conversationId) {
-    \Log::info('Channel callback triggered', [
-        'user_id' => $user->id ?? null,
-        'conversationId' => $conversationId
-    ]);
+Broadcast::channel('news', function ($user) {
+    return ['id' => $user->id, 'name' => $user->name];
+});
 
+Broadcast::channel('conversation.{conversationId}', function ($user, $conversationId) {
+ 
     $conversation = Conversation::find($conversationId);
     if (!$conversation) return false;
 
@@ -28,10 +28,6 @@ Broadcast::channel('conversation.{conversationId}', function ($user, $conversati
 
 
 Broadcast::channel('call.{conversationId}', function ($user, $conversationId) {
-    \Log::info('Channel callback triggered for presence', [
-        'user_id' => $user->id ?? null,
-        'conversationId' => $conversationId
-    ]);
 
     $conversation = Conversation::find($conversationId);
     if (!$conversation) return false;

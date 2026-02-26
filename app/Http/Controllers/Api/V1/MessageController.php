@@ -12,83 +12,60 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Events\MessageSent;
+use App\Events\MessageUpdated;
 
 class MessageController extends Controller
 {
-    /**
-     * Send a message in a conversation
-     */
-    // public function send(Request $request, Conversation $conversation)
-    // {
-    //     $request->validate([
-    //         'type' => 'required|in:text,image,video,audio,file',
-    //         'body' => 'nullable|string',
-    //         'reply_to' => 'nullable|exists:messages,id',
-    //         'media.*' => 'file|max:10240', // max 10MB
-    //     ]);
 
-    //     $user = Auth::user();
-
-    //     // Only allow participants
-    //     if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
-    //         throw ValidationException::withMessages([
-    //             'conversation' => ['You are not a participant in this conversation'],
-    //         ]);
-    //     }
-
-    //     // Create message
-    //     $message = Message::create([
-    //         'conversation_id' => $conversation->id,
-    //         'sender_id' => $user->id,
-    //         'type' => $request->type,
-    //         'body' => $request->body,
-    //         'reply_to' => $request->reply_to,
-    //     ]);
-
-    //     // Handle media files
-    //     if ($request->hasFile('media')) {
-    //         foreach ($request->file('media') as $file) {
-    //             $path = $file->store('messages', 'public');
-
-    //             MessageMedia::create([
-    //                 'message_id' => $message->id,
-    //                 'file_url' => Storage::url($path),
-    //                 'file_type' => $file->getClientMimeType(),
-    //                 'file_size' => $file->getSize(),
-    //             ]);
-    //         }
-    //     }
-
-    //     // Broadcast event
-    //     broadcast(new MessageSent($message->load('media', 'sender')))->toOthers();
-
-    //     return response()->json([
-    //         'message' => 'Message sent successfully',
-    //         'data' => $message->load('media', 'sender'),
-    //     ], 201);
-    // }
-
-    public function send(Request $request, Conversation $conversation)
+public function send(Request $request, Conversation $conversation)
 {
-    $request->validate([
-        'type' => 'required|in:text,image,video,audio,file',
-        'body' => 'nullable|string',
-        'reply_to' => 'nullable|exists:messages,id',
-        'media.*' => 'file|max:10240', // max 10MB
+    Log::info('[MessageSend] start', [
+        'conversation_id' => $conversation->id,
+        'user_id' => optional(Auth::user())->id,
+        'content_length' => $request->header('content-length'),
+        'post_max_size' => ini_get('post_max_size'),
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
+        'has_media_key' => $request->has('media'),
+        'has_file_media' => $request->hasFile('media'),
+        'media_count' => is_array($request->file('media')) ? count($request->file('media')) : 0,
+        'type' => $request->input('type'),
     ]);
+
+    try {
+        $request->validate([
+            'type' => 'required|in:text,image,video,audio,file',
+            'body' => 'nullable|string',
+            'reply_to' => 'nullable|exists:messages,id',
+            'media.*' => 'file|max:102400', // 100MB (KB units)
+            'uploaded_media' => 'nullable|array',
+            'uploaded_media.*.key' => 'required_with:uploaded_media|string|max:1024',
+            'uploaded_media.*.file_type' => 'required_with:uploaded_media|string|max:255',
+            'uploaded_media.*.file_size' => 'nullable|integer|min:1|max:104857600',
+        ]);
+        Log::info('[MessageSend] validation_passed');
+    } catch (\Throwable $e) {
+        Log::error('[MessageSend] validation_failed', [
+            'message' => $e->getMessage(),
+            'errors' => method_exists($e, 'errors') ? $e->errors() : null,
+        ]);
+        throw $e;
+    }
 
     $user = Auth::user();
 
-    // Only allow participants
     if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+        Log::warning('[MessageSend] user_not_participant', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+        ]);
         throw ValidationException::withMessages([
             'conversation' => ['You are not a participant in this conversation'],
         ]);
     }
 
-    // Create message
     $message = Message::create([
         'conversation_id' => $conversation->id,
         'sender_id' => $user->id,
@@ -97,34 +74,95 @@ class MessageController extends Controller
         'reply_to' => $request->reply_to,
     ]);
 
-    // Handle media files
-    if ($request->hasFile('media')) {
-        foreach ($request->file('media') as $file) {
-            $path = $file->store('messages', 's3');
+    Log::info('[MessageSend] message_created', ['message_id' => $message->id]);
 
-            if (!$path) {
-                continue;
+    if ($request->hasFile('media')) {
+        foreach ($request->file('media') as $idx => $file) {
+            Log::info('[MessageSend] processing_file', [
+                'index' => $idx,
+                'original_name' => $file->getClientOriginalName(),
+                'mime' => $file->getClientMimeType(),
+                'size_bytes' => $file->getSize(),
+                'upload_error_code' => $file->getError(),
+                'upload_error_message' => $file->getErrorMessage(),
+                'is_valid' => $file->isValid(),
+            ]);
+
+            try {
+                $path = $file->store('messages', 's3');
+
+                if (!$path) {
+                    Log::error('[MessageSend] file_store_returned_empty', ['index' => $idx]);
+                    continue;
+                }
+
+                $url = Storage::disk('s3')->url($path);
+
+                MessageMedia::create([
+                    'message_id' => $message->id,
+                    'file_url' => $url,
+                    'file_type' => $file->getClientMimeType(),
+                    'file_size' => $file->getSize(),
+                ]);
+
+                Log::info('[MessageSend] file_saved', [
+                    'index' => $idx,
+                    'path' => $path,
+                    'url' => $url,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('[MessageSend] file_store_failed', [
+                    'index' => $idx,
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e;
+            }
+        }
+    } else {
+        Log::warning('[MessageSend] no_files_detected_after_validation');
+    }
+
+    if (is_array($request->input('uploaded_media'))) {
+        $allowedPrefix = "messages/{$conversation->id}/{$user->id}/";
+
+        foreach ($request->input('uploaded_media') as $idx => $media) {
+            $key = ltrim((string) ($media['key'] ?? ''), '/');
+
+            if (!str_starts_with($key, $allowedPrefix)) {
+                throw ValidationException::withMessages([
+                    "uploaded_media.$idx.key" => ['Invalid media key prefix.'],
+                ]);
+            }
+
+            if (!Storage::disk('s3')->exists($key)) {
+                throw ValidationException::withMessages([
+                    "uploaded_media.$idx.key" => ['Uploaded file does not exist on storage.'],
+                ]);
             }
 
             MessageMedia::create([
                 'message_id' => $message->id,
-                'file_url' => Storage::disk('s3')->url($path),
-                'file_type' => $file->getClientMimeType(),
-                'file_size' => $file->getSize(),
+                'file_url' => Storage::disk('s3')->url($key),
+                'file_type' => (string) ($media['file_type'] ?? 'application/octet-stream'),
+                'file_size' => $media['file_size'] ?? null,
             ]);
         }
     }
 
-    // Broadcast event
     broadcast(new MessageSent($message->load('media', 'sender')))->toOthers();
     $this->sendPushNotifications($conversation, $message, $user);
 
-    // Calculate unread count for the conversation for this user
-    // Unread = messages in this conversation not read by this user
     $unread_count = $conversation->messages()
         ->where('sender_id', '!=', $user->id)
         ->whereDoesntHave('reads', fn($q) => $q->where('user_id', $user->id))
         ->count();
+
+    Log::info('[MessageSend] completed', [
+        'message_id' => $message->id,
+        'media_count' => $message->media()->count(),
+        'unread_count' => $unread_count,
+    ]);
 
     return response()->json([
         'message' => 'Message sent successfully',
@@ -132,6 +170,97 @@ class MessageController extends Controller
         'unread_count' => $unread_count,
     ], 201);
 }
+
+public function generateUploadUrl(Request $request, Conversation $conversation)
+{
+    $request->validate([
+        'file_name' => 'required|string|max:255',
+        'file_type' => 'required|string|max:255',
+        'file_size' => 'required|integer|min:1|max:104857600', // 100MB bytes
+    ]);
+
+    $user = Auth::user();
+
+    if (!$conversation->participants()->where('user_id', $user->id)->exists()) {
+        throw ValidationException::withMessages([
+            'conversation' => ['You are not a participant in this conversation'],
+        ]);
+    }
+
+    $extension = pathinfo($request->input('file_name'), PATHINFO_EXTENSION);
+    $filename = (string) Str::uuid() . ($extension ? ".{$extension}" : '');
+    $key = "messages/{$conversation->id}/{$user->id}/{$filename}";
+
+    $upload = Storage::disk('s3')->temporaryUploadUrl(
+        $key,
+        now()->addMinutes(10),
+        ['ContentType' => $request->input('file_type')]
+    );
+
+    $forbiddenBrowserHeaders = ['host', 'content-length'];
+    $headers = collect($upload['headers'] ?? [])
+        ->mapWithKeys(function ($value, $key) {
+            return [$key => is_array($value) ? implode(', ', $value) : $value];
+        })
+        ->reject(function ($value, $key) use ($forbiddenBrowserHeaders) {
+            return in_array(strtolower((string) $key), $forbiddenBrowserHeaders, true);
+        })
+        ->all();
+
+    return response()->json([
+        'message' => 'Pre-signed upload URL generated',
+        'data' => [
+            'upload_url' => $upload['url'],
+            'upload_headers' => $headers,
+            'upload_method' => 'PUT',
+            'key' => $key,
+            'file_url' => Storage::disk('s3')->url($key),
+            'expires_at' => now()->addMinutes(10)->toISOString(),
+            'max_size_bytes' => 104857600,
+        ],
+    ]);
+}
+
+public function update(Request $request, Message $message)
+{
+    $request->validate([
+        'body' => 'required|string',
+    ]);
+
+    $user = Auth::user();
+
+    if (!$message->conversation->participants()->where('user_id', $user->id)->exists()) {
+        throw ValidationException::withMessages([
+            'conversation' => ['You are not a participant in this conversation'],
+        ]);
+    }
+
+    if ((int) $message->sender_id !== (int) $user->id) {
+        throw ValidationException::withMessages([
+            'message' => ['You can only edit your own messages'],
+        ]);
+    }
+
+    if ($message->type === 'system') {
+        throw ValidationException::withMessages([
+            'message' => ['System messages cannot be edited'],
+        ]);
+    }
+
+    $message->body = $request->input('body');
+    $message->is_edited = true; // requires DB column
+    $message->save();
+
+    $message->load('media', 'sender');
+
+    broadcast(new MessageUpdated($message))->toOthers();
+
+    return response()->json([
+        'message' => 'Message updated successfully',
+        'data' => $message,
+    ]);
+}
+
 
 protected function sendPushNotifications(Conversation $conversation, Message $message, $sender): void
 {

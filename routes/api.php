@@ -74,7 +74,9 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     // Messages
     // --------------------------
     Route::get('/conversations/{conversation}/messages', [MessageController::class, 'index']); // List messages
+    Route::post('/conversations/{conversation}/messages/upload-url', [MessageController::class, 'generateUploadUrl']); // Get pre-signed S3 upload URL
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'send']); // Send message
+    Route::patch('/messages/{message}', [MessageController::class, 'update']); // Update message
     Route::post('/messages/{message}/read', [MessageController::class, 'markRead']); // Mark read
     Route::post('/conversations/{conversation}/typing', [ConversationController::class, 'typing']); // Typing indicator
 

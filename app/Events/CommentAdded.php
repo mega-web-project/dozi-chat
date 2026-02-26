@@ -1,23 +1,40 @@
 <?php
 
+namespace App\Events;
+
+use App\Models\Comment;
+use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+
 class CommentAdded implements ShouldBroadcast
 {
-    use SerializesModels;
+    use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $comment;
+    public Comment $comment;
 
-    public function __construct($comment)
+    public function __construct(Comment $comment)
     {
         $this->comment = $comment->load('user');
     }
 
-    public function broadcastOn()
+    public function broadcastOn(): Channel
     {
-        return new Channel('news.' . $this->comment->news_id);
+        return new Channel('news');
     }
 
-    public function broadcastAs()
+    public function broadcastAs(): string
     {
-        return 'comment.added';
+        return 'news.commented';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'post_id' => (string) $this->comment->news_id,
+            'comment' => $this->comment,
+        ];
     }
 }

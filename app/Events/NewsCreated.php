@@ -1,32 +1,39 @@
 <?php
 
-// app/Events/NewsCreated.php
-
 namespace App\Events;
 
 use App\Models\News;
 use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 class NewsCreated implements ShouldBroadcast
 {
-    use SerializesModels;
+    use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public $news;
+    public News $news;
 
     public function __construct(News $news)
     {
         $this->news = $news->load('user', 'poll.options');
     }
 
-    public function broadcastOn()
+    public function broadcastOn(): Channel
     {
         return new Channel('news');
     }
 
-    public function broadcastAs()
+    public function broadcastAs(): string
     {
-        return 'news.created';
+        return 'news.posted';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'post' => $this->news,
+        ];
     }
 }

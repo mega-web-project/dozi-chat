@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use App\Models\News;
 use App\Models\Comment;
 use App\Models\Poll;
@@ -50,28 +52,53 @@ class NewsController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'content' => 'required|string',
-            'image' => 'nullable|string',
+            'image' => 'nullable',
             'poll_question' => 'nullable|string',
             'poll_options' => 'nullable|array|min:2',
-            'poll_options.*' => 'string'
+            'poll_options.*' => 'string',
+            'poll.question' => 'nullable|string',
+            'poll.options' => 'nullable|array|min:2',
+            'poll.options.*' => 'string',
         ]);
 
         DB::beginTransaction();
 
         try {
+            $imageUrl = null;
+
+            if ($request->hasFile('image')) {
+                $request->validate([
+                    'image' => 'file|image|mimes:jpeg,png,jpg,webp,gif|max:102400', // 100MB
+                ]);
+
+                $imageFile = $request->file('image');
+                $extension = $imageFile->getClientOriginalExtension();
+                $filename = (string) Str::uuid() . ($extension ? ".{$extension}" : '');
+                $path = $imageFile->storeAs('news/' . Auth::id(), $filename, 's3');
+                $imageUrl = Storage::disk('s3')->url($path);
+            } elseif (is_string($request->input('image'))) {
+                $imageUrl = $request->input('image');
+            }
 
             $news = News::create([
                 'user_id' => Auth::id(),
                 'title' => $request->title,
                 'content' => $request->content,
-                'image' => $request->image,
+                'image' => $imageUrl,
             ]);
 
-            // Create poll if provided
-            if ($request->has('poll.question') && $request->has('poll.options'))
-        {
-            $pollData = $request->input('poll');
+            // Support both poll payload styles: {poll:{question,options}} and {poll_question,poll_options}
+            $pollData = null;
+            if ($request->has('poll.question') && $request->has('poll.options')) {
+                $pollData = $request->input('poll');
+            } elseif ($request->filled('poll_question') && is_array($request->input('poll_options'))) {
+                $pollData = [
+                    'question' => $request->input('poll_question'),
+                    'options' => $request->input('poll_options'),
+                ];
+            }
 
+            if ($pollData) {
             $poll = Poll::create([
                 'news_id' => $news->id,
                 'question' => $pollData['question'],
@@ -83,7 +110,7 @@ class NewsController extends Controller
                     'option_text' => $option,
                 ]);
             }
-        }
+            }
 
             $news->load('user', 'poll.options');
 
@@ -230,17 +257,22 @@ class NewsController extends Controller
     /**
      * POST /api/v1/news/{id}/comments
      */
-    public function addComment(Request $request, $id)
-    {
-        $request->validate([
-            'comment' => 'required|string'
+  public function addComment(Request $request, $id)
+{
+    try {
+        \Log::info('[addComment] start', [
+            'news_id' => $id,
+            'auth_id' => \Auth::id(),
+            'payload' => $request->all(),
         ]);
+
+        $request->validate(['comment' => 'required|string']);
 
         $news = News::findOrFail($id);
 
         $comment = Comment::create([
             'news_id' => $news->id,
-            'user_id' => Auth::id(),
+            'user_id' => \Auth::id(),
             'comment' => $request->comment,
         ]);
 
@@ -253,7 +285,15 @@ class NewsController extends Controller
             'message' => 'Comment added successfully',
             'data' => $comment
         ], 201);
+    } catch (\Throwable $e) {
+        \Log::error('[addComment] failed', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        throw $e;
     }
+}
+
 
     /**
      * POST /api/v1/news/{id}/poll/vote
