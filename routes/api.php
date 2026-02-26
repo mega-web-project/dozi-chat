@@ -80,6 +80,7 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::post('/conversations/{conversation}/messages/upload-url', [MessageController::class, 'generateUploadUrl']); // Get pre-signed S3 upload URL
     Route::post('/conversations/{conversation}/messages', [MessageController::class, 'send']); // Send message
     Route::patch('/messages/{message}', [MessageController::class, 'update']); // Update message
+    Route::post('/messages/{message}/poll/vote', [MessageController::class, 'votePoll']); // Vote on in-message poll
     Route::post('/messages/{message}/read', [MessageController::class, 'markRead']); // Mark read
     Route::post('/conversations/{conversation}/typing', [ConversationController::class, 'typing']); // Typing indicator
 

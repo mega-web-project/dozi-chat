@@ -261,6 +261,84 @@ public function update(Request $request, Message $message)
     ]);
 }
 
+public function votePoll(Request $request, Message $message)
+{
+    $request->validate([
+        'option_id' => 'required|string',
+    ]);
+
+    $user = Auth::user();
+
+    if (!$message->conversation->participants()->where('user_id', $user->id)->exists()) {
+        throw ValidationException::withMessages([
+            'conversation' => ['You are not a participant in this conversation'],
+        ]);
+    }
+
+    $prefix = '[[DOZI_POLL]]:';
+    $body = (string) $message->body;
+
+    if (!str_starts_with($body, $prefix)) {
+        throw ValidationException::withMessages([
+            'message' => ['This message is not a poll'],
+        ]);
+    }
+
+    $poll = json_decode(substr($body, strlen($prefix)), true);
+
+    if (!is_array($poll) || !isset($poll['options']) || !is_array($poll['options'])) {
+        throw ValidationException::withMessages([
+            'message' => ['Invalid poll payload'],
+        ]);
+    }
+
+    $optionId = (string) $request->input('option_id');
+    $voterId = (string) $user->id;
+
+    // Block duplicate vote
+    foreach ($poll['options'] as $opt) {
+        $votes = array_map('strval', $opt['votes'] ?? []);
+        if (in_array($voterId, $votes, true)) {
+            return response()->json([
+                'status' => false,
+                'message' => 'You have already voted',
+            ], 400);
+        }
+    }
+
+    $found = false;
+    foreach ($poll['options'] as &$opt) {
+        $opt['id'] = (string) ($opt['id'] ?? '');
+        $opt['votes'] = array_values(array_unique(array_map('strval', $opt['votes'] ?? [])));
+
+        if ($opt['id'] === $optionId) {
+            $opt['votes'][] = $voterId;
+            $opt['votes'] = array_values(array_unique($opt['votes']));
+            $found = true;
+        }
+    }
+    unset($opt);
+
+    if (!$found) {
+        throw ValidationException::withMessages([
+            'option_id' => ['Invalid poll option'],
+        ]);
+    }
+
+    $message->body = $prefix . json_encode($poll, JSON_UNESCAPED_UNICODE);
+    $message->is_edited = true;
+    $message->save();
+
+    $message->load('media', 'sender');
+
+    broadcast(new MessageUpdated($message))->toOthers();
+
+    return response()->json([
+        'message' => 'Poll vote recorded',
+        'data' => $message,
+    ], 200);
+}
+
 
 protected function sendPushNotifications(Conversation $conversation, Message $message, $sender): void
 {
