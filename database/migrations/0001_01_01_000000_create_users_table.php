@@ -25,7 +25,7 @@ return new class extends Migration
             $table->string('location')->nullable();
             $table->enum('availability', ['available', 'busy', 'away'])->default('available');
             $table->boolean('do_not_disturb')->default(false);
-            $table->enum('role', ['user', 'admin', 'super_admin'])->default('user');
+            $table->enum('role', ['user', 'admin', 'super_admin','hr','employee', 'ceo'])->default('user');
             $table->enum('status', ['active', 'inactive'])->default('active');
             // Auth
             $table->string('password')->nullable();
