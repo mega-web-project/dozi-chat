@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\CallController;
 use App\Http\Controllers\Api\V1\NewsController;
 use App\Http\Controllers\Api\V1\QrAuthController;
+use App\Http\Controllers\Api\V1\SuggestionController;
 
 Route::prefix('v1')->group(function () {
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
@@ -48,6 +49,8 @@ Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
     Route::post('/users', [AuthController::class, 'registerByAdmin']); // admin creates a user
+    Route::get('/suggestions', [SuggestionController::class, 'index']); // HR/Admin list suggestions
+    Route::patch('/suggestions/{suggestion}/status', [SuggestionController::class, 'updateStatus']); // HR/Admin update suggestion status
 });
 
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
@@ -98,6 +101,10 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
 
     Route::post('/news/{id}/comments', [NewsController::class, 'addComment']);
     Route::post('/news/{id}/poll/vote', [NewsController::class, 'vote']);
+
+    // Suggestions
+    Route::post('/suggestions', [SuggestionController::class, 'store']);
+    Route::get('/suggestions/mine', [SuggestionController::class, 'mine']);
 
 });
 
